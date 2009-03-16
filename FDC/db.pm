@@ -119,6 +119,25 @@ sub do_oid_insert {
 	return $oid;
 }
 
+sub do_oneret_query {
+	my ($self, $query) = @_;
+
+	my ($sth);
+
+	$sth = $self->doquery($query, 'do_oneret_query');
+	if ( !defined($sth) || $sth == -1) {
+		return -1;
+	}
+
+	if ($sth->rows != 1) {
+		return -1;
+	}
+	my ($ret) = $sth->fetchrow_array;
+	$sth->finish;
+
+	return $ret;
+}
+
 sub quote {
 	my ($self, $str) = @_;
 
@@ -126,3 +145,4 @@ sub quote {
 }
 
 1;
+
