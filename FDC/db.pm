@@ -70,7 +70,7 @@ sub doquery {
 	my ($sth,$rv);
 
 	if ($ENV{'fdct_debug'} eq "on") {
-		printf STDERR "prepare(%s) %s\n", $query, $caller;
+		printf STDERR "prepare[%s] %s\n", $query, $caller;
 	}
 
 	my ($dbh) = $self->getdbh;
