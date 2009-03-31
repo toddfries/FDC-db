@@ -44,7 +44,7 @@ sub getdbh {
 }
 
 #
-# query to return one result
+# query to return the 1st result
 #
 
 sub query1 {
@@ -52,10 +52,37 @@ sub query1 {
 
 	my ($sth);
 
-	if ( ($sth = $self->doquery($query, 'query1')) == -1 ) {
+	if (! ($sth = $self->doquery($query, 'query1'))) {
 		return -1;
 	}
 
+	my ($ret) = $sth->fetchrow_array;
+	if ( !defined($sth) || $sth == -1) {
+		return -1;
+	}
+	$sth->finish;
+
+	return $ret;
+}
+
+#
+# query to return one result or fail
+#
+sub do_oneret_query {
+	my ($self, $query) = @_;
+
+	my ($sth);
+
+	if (! ($sth = $self->doquery($query, 'do_oneret_query'))) {
+		return -1;
+	}
+	if ( !defined($sth) || $sth == -1) {
+		return -1;
+	}
+
+	if ($sth->rows != 1) {
+		return -1;
+	}
 	my ($ret) = $sth->fetchrow_array;
 	$sth->finish;
 
@@ -85,6 +112,7 @@ sub doquery {
 	if (! ($rv = $sth->execute) ) {
 		if ($ENV{'fdct_debug'} eq "on") {
 			printf STDERR "[$query] failed, returned $rv\n";
+			STDERR->flush;
 		}
 		return -1;
 	}
@@ -94,6 +122,7 @@ sub doquery {
 		$sth->finish;
 		if ($ENV{'fdct_debug'} eq "on") {
 			printf STDERR "[$query] returned $rv rows\n";
+			STDERR->flush;
 		}
 		return -1;
 	}
@@ -121,27 +150,6 @@ sub do_oid_insert {
 
 	$sth->finish;
 	return $oid;
-}
-
-sub do_oneret_query {
-	my ($self, $query) = @_;
-
-	my ($sth);
-
-	if (! ($sth = $self->doquery($query, 'do_oneret_query'))) {
-		return -1;
-	}
-	if ( !defined($sth) || $sth == -1) {
-		return -1;
-	}
-
-	if ($sth->rows != 1) {
-		return -1;
-	}
-	my ($ret) = $sth->fetchrow_array;
-	$sth->finish;
-
-	return $ret;
 }
 
 sub quote {
