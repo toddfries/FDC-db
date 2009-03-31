@@ -17,7 +17,6 @@ package FDC::db;
 use POSIX qw(strftime);
 
 use DBI;
-#use Date::Manip;
 
 sub new {
 	my ($class, $dsn, $user, $pass) = @_;
@@ -112,8 +111,13 @@ sub do_oid_insert {
 	my ($sth);
 
 	$sth = $self->doquery($query, 'do_oid_insert') || return -1;
-
+	if (!defined($sth) || $sth eq -1) {
+		return -1;
+	}
 	my ($oid) = $sth->{pg_oid_status};
+	if($ENV{'fdct_debug'} eq "on") {
+		printf STDERR "do_oid_insert return oid = $oid;\n";
+	}
 
 	$sth->finish;
 	return $oid;
@@ -124,7 +128,9 @@ sub do_oneret_query {
 
 	my ($sth);
 
-	$sth = $self->doquery($query, 'do_oneret_query');
+	if (! ($sth = $self->doquery($query, 'do_oneret_query'))) {
+		return -1;
+	}
 	if ( !defined($sth) || $sth == -1) {
 		return -1;
 	}
