@@ -85,6 +85,9 @@ sub do_oneret_query {
 	}
 	my ($ret) = $sth->fetchrow_array;
 	$sth->finish;
+	if ($ENV{'fdct_debug'} eq "on") {
+		printf STDERR "do_oneret_query %s\n",$ret;
+	}
 
 	return $ret;
 }
