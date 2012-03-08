@@ -111,11 +111,18 @@ sub doquery {
 		}
 		return -1;
 	}
-		
-	if (! ($rv = $sth->execute) ) {
+	eval {
+		$rv = $sth->execute;
+	};
+	if ($@) {
+		printf STDERR "[$query]: $@\n";
 		if ($ENV{'fdct_debug'} eq "on") {
 			printf STDERR "[$query] failed, returned $rv\n";
 			STDERR->flush;
+		}
+		if ($dbh->state eq "S8006") {
+			printf STDERR "[$query] lost connection to db, bailing\n";
+			exit(1);
 		}
 		return -1;
 	}
