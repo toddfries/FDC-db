@@ -12,6 +12,9 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+use strict;
+use warnings;
+
 package FDC::db;
 
 use POSIX qw(strftime);
@@ -22,24 +25,63 @@ sub new {
 	my ($class, $dsn, $user, $pass) = @_;
 	my $self = { name => 'dbh' };
 
+	$self->{dsn} = $dsn;
+	$self->{user} = $user;
+	$self->{pass} = $pass;
+
+	my $ret = bless $self, $class;
+	if ($self->connectloop(10)) {
+		return undef;
+	}
+	return $ret;
+}
+
+# Low level routines with convenient error checking
+
+sub connectloop {
+	my ($self,$loopcount) = @_;
+	my $count = 0;
+	while ($self->connect) {
+		printf STDERR "Connect attempt #%d of %d to db %s failed.\n",
+		    $count++, $loopcount, $self->{dsn};
+		if ($count > $loopcount) {
+			return 1;
+		}
+		sleep(1);
+	}
+	return 0;
+}
+
+sub connect {
+	my ($self) = @_;
+	my $dbh;
+	my ($dsn,$user,$pass) = ($self->{dsn},$self->{user},$self->{pass});
+
 # XXX set AutoCommit = 0 in the future
 # XXX consider RaisError = 1, will exit script if errors occur, ?? desirable ??
 
 	if ($ENV{'fdct_debug'} eq "on") {
 		print "dsn: $dsn, user: $user, pass: $pass\n";
 	}
-	$self->{dbh} = DBI->connect($dsn, $user, $pass,
-	   { RaiseError => 0, AutoCommit => 1}) or die $DBI::errstr;
-
-	$self->{dsn} = $dsn;
-	$self->{user} = $user;
-	$self->{pass} = $pass;
-
-	bless $self, $class;
+	eval {
+		$dbh = DBI->connect($dsn, $user, $pass,
+	   	    { RaiseError => 1, AutoCommit => 1, PrintError => 0});
+	};
+	if ($@ || !defined($dbh) || $dbh == -1) {
+		print STDERR issuestr($@, "new($dsn,USER,PASS)");
+		return 1;
+	}
+	$self->{dbh} = $dbh;
+	return 0;
 }
 
 sub getdbh {
 	my ($self) = @_;
+	if (!defined($self->{dbh})) {
+		if ($self->connectloop(10)) {
+			return undef;
+		}
+	}
 	return $self->{dbh};
 }
 
@@ -65,6 +107,23 @@ sub query1 {
 	return $ret;
 }
 
+sub issuestr {
+	my ($at,$funcinfo) = @_;
+	my $str = "";
+	if (length($at) > 0) {
+		$str = "$at\n";
+	}
+	$str .= sprintf "Issue..%s \n",$funcinfo;
+	if ($ENV{'fdct_debug'} eq "on") {
+		$str .= sprintf "at = %s ..\n",$at;
+	}
+	$str .= sprintf "err = %d, errstr = %s\n",$DBI::err,
+	    $DBI::errstr;
+	$str .= sprintf "state = %s\n", $DBI::state;
+	return $str;
+}
+	
+
 #
 # query to return one result or fail
 #
@@ -73,10 +132,15 @@ sub do_oneret_query {
 
 	my ($sth);
 
-	if (! ($sth = $self->doquery($query, 'do_oneret_query'))) {
+	eval {
+		$sth = $self->doquery($query, 'do_oneret_query');
+	};
+	if ($@) {
+		print STDERR issuestr($@, "do_oneret_query($query)");
 		return -1;
 	}
 	if ( !defined($sth) || $sth == -1) {
+		print STDERR issuestr("", "do_oneret_query($query)");
 		return -1;
 	}
 
@@ -92,6 +156,59 @@ sub do_oneret_query {
 	return $ret;
 }
 
+sub prepare {
+	my ($self, $query, $caller) = @_;
+
+	my $sth;
+	my $dbh = $self->getdbh;
+	eval {
+		$sth = $dbh->prepare($query);
+	};
+	if ($@) {
+		print STDERR issuestr($@, "doquery($query,$caller):prepare");
+		if ($ENV{'fdct_debug'} eq "on") {
+			printf STDERR "[%s] failed to prepare\n",$query;
+		}
+		if ($dbh->state =~ m/8006$/) {
+			printf STDERR "[$query] lost connection to db, retry\n";
+			$dbh->disconnect;
+			if ($self->connectloop(10)) {
+				exit(1);
+			}
+			# XXX infinite loop or not?
+			return $self->prepare($query,$caller);
+		}
+		return undef;
+	}
+	return $sth;
+}
+
+sub execute {
+	my ($self, $sth, $query, $caller) = @_;
+	my $rv;
+	my $dbh = $self->getdbh;
+	eval {
+		$rv = $self->execute($sth);
+	};
+	if ($@) {
+		printf STDERR "[$query]: $@\n";
+		if ($ENV{'fdct_debug'} eq "on") {
+			printf STDERR "[$query] failed, returned $rv\n";
+			STDERR->flush;
+		}
+		print STDERR issuestr($@, "$caller");
+		if ($dbh->state eq "S8006") {
+			printf STDERR "[$query] lost connection to db, bail\n";
+			# in order to reconnect we'd also have to store
+			# the last prepare and re-prepare after connection
+			# succeeded
+			exit(1);
+		}
+		return -1;
+	}
+	return $rv;
+}
+
 #
 # query to return multiple results
 #
@@ -104,28 +221,12 @@ sub doquery {
 	}
 
 	my ($dbh) = $self->getdbh;
-
-	if (! ($sth = $dbh->prepare($query))) {
-		if ($ENV{'fdct_debug'} eq "on") {
-			printf STDERR "[%s] failed to prepare, returned undef\n",$query;
-		}
+	
+	$sth = $self->prepare($query, "doquery($query,$caller)");
+	if (!defined($sth)) {
 		return -1;
 	}
-	eval {
-		$rv = $sth->execute;
-	};
-	if ($@) {
-		printf STDERR "[$query]: $@\n";
-		if ($ENV{'fdct_debug'} eq "on") {
-			printf STDERR "[$query] failed, returned $rv\n";
-			STDERR->flush;
-		}
-		if ($dbh->state eq "S8006") {
-			printf STDERR "[$query] lost connection to db, bailing\n";
-			exit(1);
-		}
-		return -1;
-	}
+	$rv = $self->execute($sth, $query, "doquery(..,$caller)");
 	$rv = $sth->rows;
 
 	if ( $rv < 0 ) {
@@ -165,7 +266,7 @@ sub do_oid_insert {
 sub quote {
 	my ($self, $str) = @_;
 
-	return $self->{dbh}->quote($str);
+	return $self->getdbh->quote($str);
 }
 
 1;
