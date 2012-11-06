@@ -23,14 +23,14 @@ use DBI;
 
 sub new {
 	my ($class, $dsn, $user, $pass) = @_;
-	my $self = { name => 'dbh' };
+	my $me = { name => 'dbh' };
 
-	$self->{dsn} = $dsn;
-	$self->{user} = $user;
-	$self->{pass} = $pass;
+	$me->{dsn} = $dsn;
+	$me->{user} = $user;
+	$me->{pass} = $pass;
 
-	my $ret = bless $self, $class;
-	if ($self->connectloop(10)) {
+	my $ret = bless $me, $class;
+	if ($me->connectloop(10)) {
 		return undef;
 	}
 	return $ret;
@@ -39,11 +39,11 @@ sub new {
 # Low level routines with convenient error checking
 
 sub connectloop {
-	my ($self,$loopcount) = @_;
+	my ($me,$loopcount) = @_;
 	my $count = 0;
-	while ($self->connect) {
+	while ($me->connect) {
 		printf STDERR "Connect attempt #%d of %d to db %s failed.\n",
-		    $count++, $loopcount, $self->{dsn};
+		    $count++, $loopcount, $me->{dsn};
 		if ($count > $loopcount) {
 			return 1;
 		}
@@ -53,9 +53,9 @@ sub connectloop {
 }
 
 sub connect {
-	my ($self) = @_;
+	my ($me) = @_;
 	my $dbh;
-	my ($dsn,$user,$pass) = ($self->{dsn},$self->{user},$self->{pass});
+	my ($dsn,$user,$pass) = ($me->{dsn},$me->{user},$me->{pass});
 
 # XXX set AutoCommit = 0 in the future
 # XXX consider RaisError = 1, will exit script if errors occur, ?? desirable ??
@@ -68,21 +68,21 @@ sub connect {
 	   	    { RaiseError => 1, AutoCommit => 1, PrintError => 0});
 	};
 	if ($@ || !defined($dbh) || $dbh == -1) {
-		print STDERR issuestr($@, "new($dsn,USER,PASS)");
+		print STDERR $me->issuestr($@, "new($dsn,USER,PASS)");
 		return 1;
 	}
-	$self->{dbh} = $dbh;
+	$me->{dbh} = $dbh;
 	return 0;
 }
 
 sub getdbh {
-	my ($self) = @_;
-	if (!defined($self->{dbh})) {
-		if ($self->connectloop(10)) {
+	my ($me) = @_;
+	if (!defined($me->{dbh})) {
+		if ($me->connectloop(10)) {
 			return undef;
 		}
 	}
-	return $self->{dbh};
+	return $me->{dbh};
 }
 
 #
@@ -90,11 +90,11 @@ sub getdbh {
 #
 
 sub query1 {
-	my ($self, $query) = @_;
+	my ($me, $query) = @_;
 
 	my ($sth);
 
-	if (! ($sth = $self->doquery($query, 'query1'))) {
+	if (! ($sth = $me->doquery($query, 'query1'))) {
 		return -1;
 	}
 
@@ -108,7 +108,7 @@ sub query1 {
 }
 
 sub issuestr {
-	my ($at,$funcinfo) = @_;
+	my ($me, $at, $funcinfo) = @_;
 	my $str = "";
 	if (length($at) > 0) {
 		$str = "$at\n";
@@ -117,9 +117,23 @@ sub issuestr {
 	if ($ENV{'fdct_debug'} eq "on") {
 		$str .= sprintf "at = %s ..\n",$at;
 	}
-	$str .= sprintf "err = %d, errstr = %s\n",$DBI::err,
-	    $DBI::errstr;
-	$str .= sprintf "state = %s\n", $DBI::state;
+	my ($err,$errstr,$state);
+	if (defined($me->{dbh})) {
+		$err = $me->{dbh}->err;
+		$errstr = $me->{dbh}->errstr;
+		$state = $me->{dbh}->state;
+	} else {
+		if (defined($DBI::err)) {
+			$err = $DBI::err;
+			$errstr = $DBI::errstr;
+			$state = $DBI::state;
+		}
+	}
+	if (defined($err)) {
+		$str .= sprintf "err = %d, errstr = %s\n",$DBI::err,
+		    $DBI::errstr;
+		$str .= sprintf "state = %s\n", $DBI::state;
+	}
 	return $str;
 }
 	
@@ -128,19 +142,19 @@ sub issuestr {
 # query to return one result or fail
 #
 sub do_oneret_query {
-	my ($self, $query) = @_;
+	my ($me, $query) = @_;
 
 	my ($sth);
 
 	eval {
-		$sth = $self->doquery($query, 'do_oneret_query');
+		$sth = $me->doquery($query, 'do_oneret_query');
 	};
 	if ($@) {
-		print STDERR issuestr($@, "do_oneret_query($query)");
+		print STDERR $me->issuestr($@, "do_oneret_query($query)");
 		return -1;
 	}
 	if ( !defined($sth) || $sth == -1) {
-		print STDERR issuestr("", "do_oneret_query($query)");
+		print STDERR $me->issuestr("", "do_oneret_query($query)");
 		return -1;
 	}
 
@@ -157,26 +171,26 @@ sub do_oneret_query {
 }
 
 sub prepare {
-	my ($self, $query, $caller) = @_;
+	my ($me, $query, $caller) = @_;
 
 	my $sth;
-	my $dbh = $self->getdbh;
+	my $dbh = $me->getdbh;
 	eval {
 		$sth = $dbh->prepare($query);
 	};
 	if ($@) {
-		print STDERR issuestr($@, "doquery($query,$caller):prepare");
+		print STDERR $me->issuestr($@, "doquery($query,$caller):prepare");
 		if ($ENV{'fdct_debug'} eq "on") {
 			printf STDERR "[%s] failed to prepare\n",$query;
 		}
 		if ($dbh->state =~ m/8006$/) {
 			printf STDERR "[$query] lost connection to db, retry\n";
 			$dbh->disconnect;
-			if ($self->connectloop(10)) {
+			if ($me->connectloop(10)) {
 				exit(1);
 			}
 			# XXX infinite loop or not?
-			return $self->prepare($query,$caller);
+			return $me->prepare($query,$caller);
 		}
 		return undef;
 	}
@@ -184,11 +198,11 @@ sub prepare {
 }
 
 sub execute {
-	my ($self, $sth, $query, $caller) = @_;
+	my ($me, $sth, $query, $caller) = @_;
 	my $rv;
-	my $dbh = $self->getdbh;
+	my $dbh = $me->getdbh;
 	eval {
-		$rv = $self->execute($sth);
+		$rv = $sth->execute;
 	};
 	if ($@) {
 		printf STDERR "[$query]: $@\n";
@@ -196,7 +210,7 @@ sub execute {
 			printf STDERR "[$query] failed, returned $rv\n";
 			STDERR->flush;
 		}
-		print STDERR issuestr($@, "$caller");
+		print STDERR $me->issuestr($@, "$caller");
 		if ($dbh->state eq "S8006") {
 			printf STDERR "[$query] lost connection to db, bail\n";
 			# in order to reconnect we'd also have to store
@@ -213,20 +227,23 @@ sub execute {
 # query to return multiple results
 #
 sub doquery {
-	my ($self, $query, $caller) = @_;
+	my ($me, $query, $caller) = @_;
 	my ($sth,$rv);
+	if (!defined($caller)) {
+		$caller = "";
+	}
 
 	if ($ENV{'fdct_debug'} eq "on") {
 		printf STDERR "prepare[%s] %s\n", $query, $caller;
 	}
 
-	my ($dbh) = $self->getdbh;
+	my ($dbh) = $me->getdbh;
 	
-	$sth = $self->prepare($query, "doquery($query,$caller)");
+	$sth = $me->prepare($query, "doquery($query,$caller)");
 	if (!defined($sth)) {
 		return -1;
 	}
-	$rv = $self->execute($sth, $query, "doquery(..,$caller)");
+	$rv = $me->execute($sth, $query, "doquery(..,$caller)");
 	$rv = $sth->rows;
 
 	if ( $rv < 0 ) {
@@ -242,7 +259,7 @@ sub doquery {
 }
 
 sub do_oid_insert {
-	my ($self, $query, $caller) = @_;
+	my ($me, $query, $caller) = @_;
 
 	if($ENV{'fdct_debug'} eq "on") {
 		printf STDERR "do_oid_insert(,'$query','$caller')\n";
@@ -250,7 +267,7 @@ sub do_oid_insert {
 
 	my ($sth);
 
-	$sth = $self->doquery($query, 'do_oid_insert') || return -1;
+	$sth = $me->doquery($query, 'do_oid_insert') || return -1;
 	if (!defined($sth) || $sth eq -1) {
 		return -1;
 	}
@@ -264,9 +281,9 @@ sub do_oid_insert {
 }
 
 sub quote {
-	my ($self, $str) = @_;
+	my ($me, $str) = @_;
 
-	return $self->getdbh->quote($str);
+	return $me->getdbh->quote($str);
 }
 
 1;
