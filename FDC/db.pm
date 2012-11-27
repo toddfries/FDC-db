@@ -211,12 +211,18 @@ sub execute {
 			STDERR->flush;
 		}
 		print STDERR $me->issuestr($@, "$caller");
-		if ($dbh->state eq "S8006") {
-			printf STDERR "[$query] lost connection to db, bail\n";
-			# in order to reconnect we'd also have to store
-			# the last prepare and re-prepare after connection
-			# succeeded
-			exit(1);
+		# 8006 = disconnected
+		# 8000 = timed out
+		if ($dbh->state =~ /800[06]/) {
+			printf STDERR "[$query] lost connection to db\n";
+			if ($me->connectloop(10)) {
+				exit(1);
+			}
+			$sth = $me->prepare($query, $caller);
+			if (!defined($sth)) {
+				exit(1);
+			}
+			return $me->execute($sth, $query, $caller);
 		}
 		return -1;
 	}
