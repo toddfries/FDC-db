@@ -36,6 +36,18 @@ sub new {
 	return $ret;
 }
 
+sub
+_debug
+{
+	my ($me) = @_;
+	if (defined($ENV{'fdct_debug'})) {
+		if ($ENV{'fdct_debug'} eq "on") {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 # Low level routines with convenient error checking
 
 sub connectloop {
@@ -60,7 +72,7 @@ sub connect {
 # XXX set AutoCommit = 0 in the future
 # XXX consider RaisError = 1, will exit script if errors occur, ?? desirable ??
 
-	if ($ENV{'fdct_debug'} eq "on") {
+	if ($me->_debug) {
 		print "dsn: $dsn, user: $user, pass: $pass\n";
 	}
 	eval {
@@ -114,7 +126,7 @@ sub issuestr {
 		$str = "$at\n";
 	}
 	$str .= sprintf "Issue..%s \n",$funcinfo;
-	if ($ENV{'fdct_debug'} eq "on") {
+	if ($me->_debug) {
 		$str .= sprintf "at = %s ..\n",$at;
 	}
 	my ($err,$errstr,$state);
@@ -163,7 +175,7 @@ sub do_oneret_query {
 	}
 	my ($ret) = $sth->fetchrow_array;
 	$sth->finish;
-	if ($ENV{'fdct_debug'} eq "on") {
+	if ($me->_debug) {
 		printf STDERR "do_oneret_query %s\n",$ret;
 	}
 
@@ -180,7 +192,7 @@ sub prepare {
 	};
 	if ($@) {
 		print STDERR $me->issuestr($@, "doquery($query,$caller):prepare");
-		if ($ENV{'fdct_debug'} eq "on") {
+		if ($me->_debug) {
 			printf STDERR "[%s] failed to prepare\n",$query;
 		}
 		if ($dbh->state =~ m/8006$/) {
@@ -206,7 +218,7 @@ sub execute {
 	};
 	if ($@) {
 		printf STDERR "[$query]: $@\n";
-		if ($ENV{'fdct_debug'} eq "on") {
+		if ($me->_debug) {
 			printf STDERR "[$query] failed, returned $rv\n";
 			STDERR->flush;
 		}
@@ -239,7 +251,7 @@ sub doquery {
 		$caller = "";
 	}
 
-	if ($ENV{'fdct_debug'} eq "on") {
+	if ($me->_debug) {
 		printf STDERR "prepare[%s] %s\n", $query, $caller;
 	}
 
@@ -254,7 +266,7 @@ sub doquery {
 
 	if ( $rv < 0 ) {
 		$sth->finish;
-		if ($ENV{'fdct_debug'} eq "on") {
+		if ($me->_debug) {
 			printf STDERR "[$query] returned $rv rows\n";
 			STDERR->flush;
 		}
@@ -267,7 +279,7 @@ sub doquery {
 sub do_oid_insert {
 	my ($me, $query, $caller) = @_;
 
-	if($ENV{'fdct_debug'} eq "on") {
+	if($me->_debug) {
 		printf STDERR "do_oid_insert(,'$query','$caller')\n";
 	}
 
@@ -278,7 +290,7 @@ sub do_oid_insert {
 		return -1;
 	}
 	my ($oid) = $sth->{pg_oid_status};
-	if($ENV{'fdct_debug'} eq "on") {
+	if($me->_debug) {
 		printf STDERR "do_oid_insert return oid = $oid;\n";
 	}
 
