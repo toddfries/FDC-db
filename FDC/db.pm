@@ -195,7 +195,7 @@ sub prepare {
 		if ($me->_debug) {
 			printf STDERR "[%s] failed to prepare\n",$query;
 		}
-		if ($dbh->state =~ m/8006$/) {
+		if ($dbh->state =~ m/(57P01|8006)$/) {
 			printf STDERR "[$query] lost connection to db, retry\n";
 			$dbh->disconnect;
 			if ($me->connectloop(10)) {
@@ -225,7 +225,8 @@ sub execute {
 		print STDERR $me->issuestr($@, "$caller");
 		# 8006 = disconnected
 		# 8000 = timed out
-		if ($dbh->state =~ /800[06]/) {
+		# 57P01 = remote system shutdown
+		if ($dbh->state =~ /(57P01|800[06])/) {
 			printf STDERR "[$query] lost connection to db\n";
 			if ($me->connectloop(10)) {
 				exit(1);
