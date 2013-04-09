@@ -81,6 +81,9 @@ sub connect {
 	};
 	if ($@ || !defined($dbh) || $dbh == -1) {
 		print STDERR $me->issuestr($@, "new($dsn,USER,PASS)");
+		if ($@ =~ /krb5_cc_get_principal: No such file/) {
+			system("kinit");
+		}
 		return 1;
 	}
 	$me->{dbh} = $dbh;
