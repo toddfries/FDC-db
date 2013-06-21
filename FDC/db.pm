@@ -84,6 +84,9 @@ sub connect {
 		if ($@ =~ /krb5_cc_get_principal: No such file/) {
 			system("kinit");
 		}
+		if ($@ =~ /Can.t locate .*pm in \@INC/) {
+			print "";
+		}
 		return 1;
 	}
 	$me->{dbh} = $dbh;
