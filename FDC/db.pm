@@ -18,12 +18,24 @@ use warnings;
 package FDC::db;
 
 use POSIX qw(strftime);
+use Term::ReadKey;
 
 use DBI;
+
+use strict;
+use warnings;
 
 sub new {
 	my ($class, $dsn, $user, $pass) = @_;
 	my $me = { name => 'dbh' };
+
+	if (!defined($user) || length($user) == 0) {
+		if (defined($ENV{'PGUSER'})) {
+			$user = $ENV{'PGUSER'};
+		} else {
+			chomp($user = `id -un`);
+		}
+	}
 
 	$me->{dsn} = $dsn;
 	$me->{user} = $user;
@@ -72,6 +84,7 @@ sub connect {
 # XXX set AutoCommit = 0 in the future
 # XXX consider RaisError = 1, will exit script if errors occur, ?? desirable ??
 
+	retry:
 	if ($me->_debug) {
 		print "dsn: $dsn, user: $user, pass: $pass\n";
 	}
@@ -83,10 +96,25 @@ sub connect {
 		print STDERR $me->issuestr($@, "new($dsn,USER,PASS)");
 		if ($@ =~ /krb5_cc_get_principal: No such file/) {
 			system("kinit");
+			goto retry;
 		}
 		if ($@ =~ /Can.t locate .*pm in \@INC/) {
 			print "";
 		}
+		if ($@ =~ /no password supplied/) {
+			my $pghost = "";
+			if (defined($ENV{'PGHOST'})) {
+				$pghost = " pghost=".$ENV{'PGHOST'};
+			}
+			printf "dsn=%s%s user=%s password: ", $dsn, $pghost, $user;
+			ReadMode('noecho');
+			my $str = <STDIN>;
+			ReadMode(0);
+			chomp($pass = $str);
+			$me->{pass} = $pass;
+			goto retry;
+		}
+			
 		return 1;
 	}
 	$me->{dbh} = $dbh;
