@@ -25,6 +25,8 @@ use Term::ReadKey;
 
 use DBI;
 
+use DBI::Const::GetInfoType qw(%GetInfoType);
+
 use strict;
 use warnings;
 
@@ -48,6 +50,8 @@ sub new {
 	if ($me->connectloop(10)) {
 		return undef;
 	}
+	$me->{dbmsname} = $me->{dbh}->get_info( $GetInfoType{SQL_DBMS_NAME} );
+
 	return $ret;
 }
 
@@ -96,7 +100,6 @@ sub connect {
 	   	    { RaiseError => 1, AutoCommit => 1, PrintError => 0});
 	};
 	if ($@ || !defined($dbh) || $dbh == -1) {
-		print STDERR $me->issuestr($@, "new($dsn,USER,PASS)");
 		if ($@ =~ /krb5_cc_get_principal: No such file/) {
 			system("kinit");
 			goto retry;
@@ -107,16 +110,18 @@ sub connect {
 		if ($@ =~ /no password supplied/) {
 			my $pghost = "";
 			if (defined($ENV{'PGHOST'})) {
-				$pghost = " pghost=".$ENV{'PGHOST'};
+				$pghost = "host=".$ENV{'PGHOST'};
 			}
-			printf "dsn=%s%s user=%s password: ", $dsn, $pghost, $user;
+			printf "dsn=%s%s,user=%s password: ", $dsn, $pghost, $user;
 			ReadMode('noecho');
 			my $str = <STDIN>;
 			ReadMode(0);
+			print "\n";
 			chomp($pass = $str);
 			$me->{pass} = $pass;
 			goto retry;
 		}
+		print STDERR $me->issuestr($@, "new($dsn,USER,PASS)");
 			
 		return 1;
 	}
@@ -304,7 +309,7 @@ sub do_oid_insert {
 	if (!defined($sth) || $sth eq -1) {
 		return -1;
 	}
-	my ($oid) = $sth->{pg_oid_status};
+	my ($oid) = $sth->getoid;
 	if($me->_debug) {
 		printf STDERR "do_oid_insert return oid = $oid;\n";
 	}
@@ -363,6 +368,20 @@ sub getsth {
 		return undef;
 	}
 	return $me->{sth};
+}
+
+sub getoid {
+	my ($me) = @_;
+	if (!defined($me->{sth})) {
+		return undef;
+	}
+
+	my $dbmsname = $me->{db}->{dbmsname};
+	if ($dbmsname eq "PostgreSQL") {
+		return $me->{sth}->{pg_oid_status};
+	}
+	printf STDERR "getoid: Unsupported DBMS Name: '%s'\n", $dbmsname;
+	return undef;
 }
 
 #
