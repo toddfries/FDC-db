@@ -17,6 +17,9 @@ use warnings;
 
 package FDC::db;
 
+use strict;
+use warnings;
+
 use POSIX qw(strftime);
 use Term::ReadKey;
 
@@ -27,7 +30,7 @@ use warnings;
 
 sub new {
 	my ($class, $dsn, $user, $pass) = @_;
-	my $me = { name => 'dbh' };
+	my $me = { name => 'FDC::db' };
 
 	if (!defined($user) || length($user) == 0) {
 		if (defined($ENV{'PGUSER'})) {
@@ -190,7 +193,7 @@ sub issuestr {
 sub do_oneret_query {
 	my ($me, $query) = @_;
 
-	my ($sth);
+	my $sth;
 
 	eval {
 		$sth = $me->doquery($query, 'do_oneret_query');
@@ -204,20 +207,28 @@ sub do_oneret_query {
 		return -1;
 	}
 
-	if ($sth->rows != 1) {
+	# is $sth->rows not reliable on SQLite ?
+	#if ($sth->rows != 1) {
+	#	return -1;
+	#}
+	my (@ret) = $sth->fetchrow_array;
+	if ($#ret < 0) {
 		return -1;
 	}
-	my ($ret) = $sth->fetchrow_array;
 	$sth->finish;
 	if ($me->_debug) {
-		printf STDERR "do_oneret_query %s\n",$ret;
+		printf STDERR "do_oneret_query %s\n",$ret[0];
 	}
 
-	return $ret;
+	return $ret[0];
 }
 
 sub prepare {
 	my ($me, $query, $caller) = @_;
+
+	if (!defined($caller)) {
+		$caller = "";
+	}
 
 	my $sth;
 	my $dbh = $me->getdbh;
@@ -240,41 +251,10 @@ sub prepare {
 		}
 		return undef;
 	}
-	return $sth;
+	my $newsth = FDC::db::sth->new($me, $sth, $query, "FDC::db($caller)");
+	return $newsth;
 }
 
-sub execute {
-	my ($me, $sth, $query, $caller) = @_;
-	my $rv;
-	my $dbh = $me->getdbh;
-	eval {
-		$rv = $sth->execute;
-	};
-	if ($@) {
-		printf STDERR "[$query]: $@\n";
-		if ($me->_debug) {
-			printf STDERR "[$query] failed, returned $rv\n";
-			STDERR->flush;
-		}
-		print STDERR $me->issuestr($@, "$caller");
-		# 8000 = timed out
-		# 8006 = disconnected
-		# 57P01 = remote system shutdown
-		if ($dbh->state =~ /(57P01|800[06])/) {
-			printf STDERR "[$query] lost connection to db\n";
-			if ($me->connectloop(10)) {
-				exit(1);
-			}
-			$sth = $me->prepare($query, $caller);
-			if (!defined($sth)) {
-				exit(1);
-			}
-			return $me->execute($sth, $query, $caller);
-		}
-		return -1;
-	}
-	return $rv;
-}
 
 #
 # query to return multiple results
@@ -296,7 +276,7 @@ sub doquery {
 	if (!defined($sth)) {
 		return -1;
 	}
-	$rv = $me->execute($sth, $query, "doquery(..,$caller)");
+	$rv = $sth->execute(undef, "doquery([$query],$caller)");
 	$rv = $sth->rows;
 
 	if ( $rv < 0 ) {
@@ -339,5 +319,179 @@ sub quote {
 	return $me->getdbh->quote($str);
 }
 
-1;
+sub tables {
+	my ($me) = @_;
 
+	return $me->getdbh->tables();
+}
+
+package FDC::db::sth;
+
+use strict;
+use warnings;
+
+# Two groups of functions
+# 1. Utility functions unique to FDC::db::sth
+# 2. Functions to mimic the sth class returned by $dbh->prepare()
+
+
+#
+# Utility functions
+#
+
+sub new {
+	my ($class, $db, $sth, $query, $caller) = @_;
+	my $me = { name => 'sth' };
+
+	$me->{db}  = $db;
+	$me->{sth} = $sth;
+	$me->{query} = $query;
+	$me->{caller} = $caller;
+	@{$me->{bindparams}} = ();
+
+	my $ret = bless $me, $class;
+
+	if ($db->_debug) {
+		printf STDERR "# %s ( %s )\n", $me, $sth;
+	}
+	return $ret;
+}
+
+sub getsth {
+	my ($me) = @_;
+	if (!defined($me->{sth})) {
+		return undef;
+	}
+	return $me->{sth};
+}
+
+#
+# sth mimic functions, handle errors gracefully
+#
+
+sub fetchrow_array {
+	my ($me) = @_;
+
+	return $me->getsth->fetchrow_array;
+}
+sub fetch {
+	my ($me) = @_;
+
+	return $me->getsth->fetch;
+}
+sub finish {
+	my ($me) = @_;
+	return $me->getsth->finish;
+}
+sub rows {
+	my ($me) = @_;
+
+	return $me->getsth->rows;
+}
+sub fetchrow_arrayref {
+	my ($me) = @_;
+
+	return $me->fetch;
+}
+sub fetchall_arrayref {
+	my ($me, $slice, $max_rows) = @_;
+
+	return $me->getsth->fetchall_arrayref($slice, $max_rows);
+}
+sub bind_param {
+	my ($me, $count, $info, $type) = @_;
+	my $bindparm;
+	@{$bindparm} = ($count, $type, $info);
+
+	push @{$me->{bindparams}}, $bindparm;
+	if ($me->{db}->_debug) {
+		printf STDERR "# %s FDC::db::sth->bind_param(%s,%s,%s) [%s]\n",
+	    $me, $count, (length($info) > 1024) ? "length(\$info)=".length($info) : $info, $type, $me->{query};
+	}
+
+	return $me->getsth->bind_param($count, $info, $type);
+}
+
+sub execute {
+	my ($me, $query, $caller) = @_;
+	my $rv;
+	my $db = $me->{db};
+	my $sth = $me->getsth;
+	if (!defined($caller)) {
+		$caller = "";
+	}
+	eval {
+		if (defined($query)) {
+			$rv = $sth->execute($query);
+		} else {
+			$rv = $sth->execute;
+		}
+	};
+	if ($@) {
+		printf STDERR "# %s FDC::db::sth: $@", $me;
+		printf STDERR "# %s FDC::db::sth: query='%s'\n",$me, $query;
+		my ($x,$y,$z);
+		for my $parm (@{$me->{bindparams}}) {
+			($x,$y,$z) = @{$parm};
+			if (length($y) > 1024) {
+				$y = "length()=".length($y);
+			}
+			printf STDERR "# %s FDC::db::sth: ", $me;
+			printf STDERR "bind_params(%s,%s,%s)\n",$me,$x,$y,$z;
+		}
+		if ($me->{db}->_debug) {
+			printf STDERR "[$query] failed, returned $rv\n";
+			STDERR->flush;
+		}
+		print STDERR $me->{db}->issuestr($@, "$caller");
+
+		my $lostdb = 0;
+		my $retry = 0;
+
+		# PostgreSQL error codes:
+		#   8000 = timed out
+		#   8006 = disconnected
+		#   57P01 = remote system shutdown
+		if ($db->getdbh->state =~ /(57P01|800[06])/) {
+			$lostdb = 1;
+			$retry = 1;
+		}
+
+		# SQLite3 error codes:
+		# S1000 = generic error, must also parse errstr
+		if ($db->getdbh->state =~ /S1000/) {
+			#$lostdb = 0;
+			$lostdb = 1;
+			$retry = 1;
+		}
+		if ($lostdb == 1) {
+			printf STDERR "FDC::db::sth: lost connection to db [%s]\n",$query;
+			if ($db->connectloop(10)) {
+				exit(1);
+			}
+		}
+		if ($retry == 1) {
+			printf STDERR "FDC::db::sth: retrying query [%s]\n",$query;
+			$sth = $db->prepare($query, $caller);
+			if (!defined($sth)) {
+				exit(1);
+			}
+			my @parms = @{$me->{bindparams}};
+			@{$me->{bindparams}} = ();
+			foreach my $parm (@parms) {
+				my ($count, $type, $info) = @{$parm};
+				printf STDERR "# %s (%s,%s,%s)\n", $me,
+				    $count, $info, $type;
+				$me->bind_param($count,$info,$type);
+			}
+			$me->{sth} = $sth;
+			return $me->execute(undef, $caller);
+		}
+		return -1;
+	}
+	# Clear parms after success, right?? ;-)
+	@{$me->{bindparams}} = ();
+	return $rv;
+}
+
+1;
