@@ -54,6 +54,20 @@ sub new {
 
 	return $ret;
 }
+sub
+oidname
+{
+	my ($me) = @_;
+
+	if ($me->{dbmsname} eq "PostgreSQL") {
+		return "oid";
+	}
+	if ($me->{dbmsname} eq "SQLite") {
+		return "rowid";
+	}
+	printf STDERR "Oops, unsupported database: '%s'\n", $me->{dbmsname};
+	return undef;
+}
 
 sub
 _debug
@@ -286,10 +300,6 @@ sub doquery {
 		return -1;
 	}
 	$rv = $sth->execute(undef, "doquery([$query],$caller)");
-	if ($caller eq 'do_oid_insert') {
-		my $oid = $sth->{sth}->{pg_oid_status};
-		printf STDERR "doquery: oid=%d\n", $oid;
-	}
 	$rv = $sth->rows;
 
 	if ( $rv < 0 ) {
@@ -389,8 +399,11 @@ sub getoid {
 	if ($dbmsname eq "PostgreSQL") {
 		return $me->getsth->{pg_oid_status};
 	}
+	if ($dbname eq "SQLite") {
+		return $me->{db}->{dbh}->last_insert_id("","","","");
+	}
 	printf STDERR "getoid: Unsupported DBMS Name: '%s'\n", $dbmsname;
-	return undef;
+	return $me->{db}->{dbh}->last_insert_id("","","","");
 }
 
 #
