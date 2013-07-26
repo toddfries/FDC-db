@@ -399,7 +399,7 @@ sub getoid {
 	if ($dbmsname eq "PostgreSQL") {
 		return $me->getsth->{pg_oid_status};
 	}
-	if ($dbname eq "SQLite") {
+	if ($dbmsname eq "SQLite") {
 		return $me->{db}->{dbh}->last_insert_id("","","","");
 	}
 	printf STDERR "getoid: Unsupported DBMS Name: '%s'\n", $dbmsname;
