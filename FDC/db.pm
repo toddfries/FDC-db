@@ -107,7 +107,8 @@ sub connect {
 		if ($@ =~ /Can.t locate .*pm in \@INC/) {
 			print "";
 		}
-		if ($@ =~ /no password supplied/) {
+		if ($@ =~ /no password supplied/ ||
+		    $@ =~ /password authentication failed/) {
 			my $pghost = "";
 			if (defined($ENV{'PGHOST'})) {
 				$pghost = "host=".$ENV{'PGHOST'};
@@ -220,6 +221,9 @@ sub do_oneret_query {
 	if ($#ret < 0) {
 		return -1;
 	}
+	if (!defined($ret[0])) {
+		return -1;
+	}
 	$sth->finish;
 	if ($me->_debug) {
 		printf STDERR "do_oneret_query %s\n",$ret[0];
@@ -282,6 +286,10 @@ sub doquery {
 		return -1;
 	}
 	$rv = $sth->execute(undef, "doquery([$query],$caller)");
+	if ($caller eq 'do_oid_insert') {
+		my $oid = $sth->{sth}->{pg_oid_status};
+		printf STDERR "doquery: oid=%d\n", $oid;
+	}
 	$rv = $sth->rows;
 
 	if ( $rv < 0 ) {
@@ -373,12 +381,13 @@ sub getsth {
 sub getoid {
 	my ($me) = @_;
 	if (!defined($me->{sth})) {
+		printf STDERR "Warning: getoid() called but me->{sth}==undef\n";
 		return undef;
 	}
 
 	my $dbmsname = $me->{db}->{dbmsname};
 	if ($dbmsname eq "PostgreSQL") {
-		return $me->{sth}->{pg_oid_status};
+		return $me->getsth->{pg_oid_status};
 	}
 	printf STDERR "getoid: Unsupported DBMS Name: '%s'\n", $dbmsname;
 	return undef;
