@@ -413,11 +413,13 @@ sub getoid {
 sub fetchrow_array {
 	my ($me) = @_;
 
+	# XXX observed to fail
 	return $me->getsth->fetchrow_array;
 }
 sub fetch {
 	my ($me) = @_;
 
+	# XXX observed to fail
 	return $me->getsth->fetch;
 }
 sub finish {
