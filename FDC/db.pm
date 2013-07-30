@@ -83,7 +83,9 @@ _debug
 
 # Low level routines with convenient error checking
 
-sub connectloop {
+sub
+connectloop
+{
 	my ($me,$loopcount) = @_;
 	my $count = 0;
 	while ($me->connect) {
@@ -97,7 +99,9 @@ sub connectloop {
 	return 0;
 }
 
-sub connect {
+sub
+connect
+{
 	my ($me) = @_;
 	my $dbh;
 	my ($dsn,$user,$pass) = ($me->{dsn},$me->{user},$me->{pass});
@@ -117,6 +121,10 @@ sub connect {
 		if ($@ =~ /krb5_cc_get_principal: No such file/) {
 			system("kinit");
 			goto retry;
+		}
+		if ($@ =~ /no pg_hba.conf entry for host/) {
+			print "FATAL: EPERM. $@";
+			exit(1);
 		}
 		if ($@ =~ /Can.t locate .*pm in \@INC/) {
 			print "";
@@ -318,7 +326,7 @@ sub do_oid_insert {
 	my ($me, $query, $caller) = @_;
 
 	if($me->_debug) {
-		printf STDERR "do_oid_insert(,'$query','$caller')\n";
+		printf STDERR "do_oid_insert($me,'$query','$caller')\n";
 	}
 
 	my ($sth);
@@ -327,9 +335,19 @@ sub do_oid_insert {
 	if (!defined($sth) || $sth eq -1) {
 		return -1;
 	}
-	my ($oid) = $sth->getoid;
+	if (! ($query =~ /^insert /i)) {
+		return -1;
+	}
+	my $table = $query;
+	$table =~ / into ([^ ]+) /i;
+	$table = $1;
+	if (!defined($table)) {
+		printf STDERR "do_oid_insert: no table found in query '%s'\n", $query;
+		$table = "";
+	}
+	my ($oid) = $sth->getoid($table);
 	if($me->_debug) {
-		printf STDERR "do_oid_insert return oid = $oid;\n";
+		printf STDERR "do_oid_insert returning oid = $oid;\n";
 	}
 
 	$sth->finish;
@@ -374,9 +392,6 @@ sub new {
 
 	my $ret = bless $me, $class;
 
-	if ($db->_debug) {
-		printf STDERR "# %s ( %s )\n", $me, $sth;
-	}
 	return $ret;
 }
 
@@ -389,7 +404,7 @@ sub getsth {
 }
 
 sub getoid {
-	my ($me) = @_;
+	my ($me, $table) = @_;
 	if (!defined($me->{sth})) {
 		printf STDERR "Warning: getoid() called but me->{sth}==undef\n";
 		return undef;
@@ -397,13 +412,29 @@ sub getoid {
 
 	my $dbmsname = $me->{db}->{dbmsname};
 	if ($dbmsname eq "PostgreSQL") {
-		return $me->getsth->{pg_oid_status};
+		my $oidss = $me->{sth}->{pg_oid_status}; # oid
+		my $oidsd = $me->{db}->{dbh}->{pg_oid_status}; # oid
+		my $oidli;
+		eval {
+			$oidli = $me->{db}->{dbh}->last_insert_id("","","$table",""); # autoincrement column number
+		};
+		if ($@) {
+			printf STDERR "last_insert_id: $@";
+			$oidli = $me->{db}->do_oneret_query("select max(id) from $table;");
+		}
+		return $oidli;
 	}
 	if ($dbmsname eq "SQLite") {
-		return $me->{db}->{dbh}->last_insert_id("","","","");
+		my $oidli = $me->{db}->{dbh}->last_insert_id("","","$table","");
+		return $oidli;
+	}
+	if ($dbmsname eq "mysql") {
+		my $oidsd = $me->{db}->{dbh}->{mysql_insertid}; # autoincrement column number
+		my $oidli = $me->{db}->{dbh}->last_insert_id("","","$table",""); # autoincrement column number
+		return $oidli;
 	}
 	printf STDERR "getoid: Unsupported DBMS Name: '%s'\n", $dbmsname;
-	return $me->{db}->{dbh}->last_insert_id("","","","");
+	return $me->{db}->{dbh}->last_insert_id("","","$table","");
 }
 
 #
