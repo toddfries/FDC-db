@@ -371,6 +371,8 @@ package FDC::db::sth;
 use strict;
 use warnings;
 
+use DBI qw(:sql_types);
+
 # Two groups of functions
 # 1. Utility functions unique to FDC::db::sth
 # 2. Functions to mimic the sth class returned by $dbh->prepare()
@@ -479,8 +481,15 @@ sub bind_param {
 
 	push @{$me->{bindparams}}, $bindparm;
 	if ($me->{db}->_debug) {
+		my $ifmt = $info;
+		# XXX is this really generic for all dbs?
+		#if ($me->{dbmsname} eq "SQLite") {
+			if ($type == SQL_BLOB) {
+				$ifmt = "<BLOB>";
+			}
+		#}
 		printf STDERR "# %s FDC::db::sth->bind_param(%s,%s,%s) [%s]\n",
-	    $me, $count, (length($info) > 1024) ? "length(\$info)=".length($info) : $info, $type, $me->{query};
+	    $me, $count, (length($ifmt) > 1024) ? "length(\$ifmt)=".length($ifmt) : $ifmt, $type, $me->{query};
 	}
 
 	return $me->getsth->bind_param($count, $info, $type);
@@ -502,15 +511,17 @@ sub execute {
 		}
 	};
 	if ($@) {
-		printf STDERR "# %s FDC::db::sth: $@", $me;
-		printf STDERR "# %s FDC::db::sth: query='%s'\n",$me, $query;
+		printf STDERR "# %s) $@", $me;
+		printf STDERR "# %s) query='%s'\n",$me, $query;
 		my ($x,$y,$z);
 		for my $parm (@{$me->{bindparams}}) {
 			($x,$y,$z) = @{$parm};
 			if (length($y) > 1024) {
 				$y = "length()=".length($y);
 			}
-			printf STDERR "# %s FDC::db::sth: ", $me;
+			if ($me->{db}->_debug) {
+				printf STDERR "# %s FDC::db::sth: ", $me;
+			}
 			printf STDERR "bind_params(%s,%s,%s)\n",$me,$x,$y,$z;
 		}
 		if ($me->{db}->_debug) {
