@@ -126,6 +126,10 @@ connect
 			print "FATAL: EPERM. $@";
 			exit(1);
 		}
+		if ($@ =~ /Host is down/) {
+			print "FATAL: EHOSTUNREACH. $@";
+			exit(1);
+		}
 		if ($@ =~ /Can.t locate .*pm in \@INC/) {
 			print "";
 		}
