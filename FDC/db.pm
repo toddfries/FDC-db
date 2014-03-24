@@ -51,6 +51,7 @@ sub new {
 		return undef;
 	}
 	$me->{dbmsname} = $me->{dbh}->get_info( $GetInfoType{SQL_DBMS_NAME} );
+	printf STDERR "Set dbmsname to '%s'\n", $me->{dbmsname};
 
 	return $ret;
 }
@@ -349,7 +350,12 @@ sub do_oid_insert {
 		printf STDERR "do_oid_insert: no table found in query '%s'\n", $query;
 		$table = "";
 	}
-	my ($oid) = $sth->getoid($table);
+	my ($oid);
+	if ($me->{dbmsname} =~ /PostgreSQL/) {
+		$oid = $sth->{pg_oid_status};
+	} else {
+		($oid) = $sth->getoid($table);
+	}
 	if($me->_debug) {
 		printf STDERR "do_oid_insert returning oid = $oid;\n";
 	}
