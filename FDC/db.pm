@@ -306,8 +306,6 @@ sub doquery {
 		printf STDERR "prepare[%s] %s\n", $query, $caller;
 	}
 
-	my ($dbh) = $me->getdbh;
-	
 	$sth = $me->prepare($query, "doquery($query,$caller)");
 	if (!defined($sth)) {
 		return -1;
@@ -329,35 +327,52 @@ sub doquery {
 
 sub do_oid_insert {
 	my ($me, $query, $caller) = @_;
+	my $dbg = $me->_debug;
+	if (!defined($caller)) {
+		$caller = "<undef>";
+	}
 
-	if($me->_debug) {
+	if($dbg) {
 		printf STDERR "do_oid_insert($me,'$query','$caller')\n";
 	}
 
 	my ($sth);
 
-	$sth = $me->doquery($query, 'do_oid_insert') || return -1;
+	$sth = $me->doquery($query, "${caller}->do_oid_insert") || return -1;
 	if (!defined($sth) || $sth eq -1) {
 		return -1;
 	}
 	if (! ($query =~ /^insert /i)) {
+		$sth->finish;
 		return -1;
+	}
+	my ($oid);
+	if ($dbg) {
+		printf STDERR "do_oid_insert: checking dbmsname = %s\n",
+		    $me->{dbmsname};
 	}
 	my $table = $query;
 	$table =~ / into ([^ ]+) /i;
 	$table = $1;
-	if (!defined($table)) {
-		printf STDERR "do_oid_insert: no table found in query '%s'\n", $query;
-		$table = "";
-	}
-	my ($oid);
 	if ($me->{dbmsname} =~ /PostgreSQL/) {
-		$oid = $sth->{pg_oid_status};
+		$oid = $sth->getoid($table);
+		if (!defined($oid)) {
+			printf STDERR "do_oid_insert: sth->getoid() = <undef>\n";
+		}
 	} else {
-		($oid) = $sth->getoid($table);
+		if (defined($table)) {
+			($oid) = $sth->getoid($table);
+		} else {
+			printf STDERR "do_oid_insert: no table found in query '%s'\n", $query;
+			$oid = -1;
+		}
 	}
-	if($me->_debug) {
-		printf STDERR "do_oid_insert returning oid = $oid;\n";
+	if (!defined($oid)) {
+		printf STDERR "do_oid_insert: \$oid = <undef>;\n";
+		$oid = -1;
+	}
+	if($dbg) {
+		printf STDERR "do_oid_insert returning oid = %s\n",$oid;
 	}
 
 	$sth->finish;
@@ -423,18 +438,25 @@ sub getoid {
 	}
 
 	my $dbmsname = $me->{db}->{dbmsname};
+	# XXX ugh, PostgreSQL {pg_oid_status} returns an oid (good!)
+	#     last_insert_id() returns the 'id' column of the row
 	if ($dbmsname eq "PostgreSQL") {
 		my $oidss = $me->{sth}->{pg_oid_status}; # oid
-		my $oidsd = $me->{db}->{dbh}->{pg_oid_status}; # oid
 		my $oidli;
+		# XXX if last_insert_id ever is the only way, re-enable
+		if (0) {
 		eval {
 			$oidli = $me->{db}->{dbh}->last_insert_id("","","$table",""); # autoincrement column number
 		};
 		if ($@) {
 			printf STDERR "last_insert_id: $@";
-			$oidli = $me->{db}->do_oneret_query("select max(id) from $table;");
+			$oidli = $oidss;
 		}
-		return $oidli;
+		$oidli = $me->{db}->do_oneret_query("select oid from $table where id = $oidli",'getoid');
+		printf STDERR "getoid: oidss = %s, oidli = %s\n",
+		    $oidss,$oidli;
+		}
+		return $oidss;
 	}
 	if ($dbmsname eq "SQLite") {
 		my $oidli = $me->{db}->{dbh}->last_insert_id("","","$table","");
