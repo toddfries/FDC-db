@@ -149,6 +149,10 @@ connect
 			$me->{pass} = $pass;
 			goto retry;
 		}
+		if ($@ =~ /database system is starting up/) {
+			sleep(2);
+			goto retry;
+		}
 		print STDERR $me->issuestr($@, "new($dsn,USER,PASS)");
 			
 		return 1;
