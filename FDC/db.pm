@@ -547,6 +547,10 @@ sub execute {
 		}
 	};
 	if ($@) {
+		my $_query = $query;
+		if (!defined($_query)) {
+			$_query = "<undef>";
+		}
 		printf STDERR "# %s) $@", $me;
 		printf STDERR "# %s) query='%s'\n",$me, $query;
 		my ($x,$y,$z);
