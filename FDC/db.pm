@@ -276,7 +276,7 @@ sub prepare {
 		$sth = $dbh->prepare($query);
 	};
 	if ($@) {
-		print STDERR $me->issuestr($@, "doquery($query,$caller):prepare");
+		print STDERR $me->issuestr($@, "doquery(query=$query,caller=$caller):prepare");
 		if ($me->_debug) {
 			printf STDERR "[%s] failed to prepare\n",$query;
 		}
@@ -539,6 +539,10 @@ sub execute {
 	if (!defined($caller)) {
 		$caller = "";
 	}
+	my $_query = $query;
+	if (!defined($_query)) {
+		$_query = "<undef>";
+	}
 	eval {
 		if (defined($query)) {
 			$rv = $sth->execute($query);
@@ -547,12 +551,8 @@ sub execute {
 		}
 	};
 	if ($@) {
-		my $_query = $query;
-		if (!defined($_query)) {
-			$_query = "<undef>";
-		}
 		printf STDERR "# %s) $@", $me;
-		printf STDERR "# %s) query='%s'\n",$me, $query;
+		printf STDERR "# %s) query='%s'\n",$me, $_query;
 		my ($x,$y,$z);
 		for my $parm (@{$me->{bindparams}}) {
 			($x,$y,$z) = @{$parm};
@@ -565,7 +565,7 @@ sub execute {
 			printf STDERR "bind_params(%s,%s,%s)\n",$me,$x,$y,$z;
 		}
 		if ($me->{db}->_debug) {
-			printf STDERR "[$query] failed, returned $rv\n";
+			printf STDERR "[$_query] failed, returned $rv\n";
 			STDERR->flush;
 		}
 		print STDERR $me->{db}->issuestr($@, "$caller");
@@ -590,14 +590,14 @@ sub execute {
 			$retry = 1;
 		}
 		if ($lostdb == 1) {
-			printf STDERR "FDC::db::sth: lost connection to db [%s]\n",$query;
+			printf STDERR "FDC::db::sth: lost connection to db [%s]\n",$_query;
 			if ($db->connectloop(10)) {
 				exit(1);
 			}
 		}
 		if ($retry == 1) {
-			printf STDERR "FDC::db::sth: retrying query [%s]\n",$query;
-			$sth = $db->prepare($query, $caller);
+			printf STDERR "FDC::db::sth: retrying query [%s]\n",$_query;
+			$sth = $db->prepare($_query, $caller);
 			if (!defined($sth)) {
 				exit(1);
 			}
