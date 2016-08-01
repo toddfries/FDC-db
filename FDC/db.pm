@@ -51,7 +51,9 @@ sub new {
 		return undef;
 	}
 	$me->{dbmsname} = $me->{dbh}->get_info( $GetInfoType{SQL_DBMS_NAME} );
-	printf STDERR "Set dbmsname to '%s'\n", $me->{dbmsname};
+	if (defined($ENV{'fdct_debug'})) {
+		printf STDERR "Set dbmsname to '%s'\n", $me->{dbmsname};
+	}
 
 	return $ret;
 }
@@ -543,6 +545,9 @@ sub execute {
 	if (!defined($_query)) {
 		$_query = "<undef>";
 	}
+	my $execcount=0;
+	execagain:
+	$execcount++;
 	eval {
 		if (defined($query)) {
 			$rv = $sth->execute($query);
@@ -551,7 +556,16 @@ sub execute {
 		}
 	};
 	if ($@) {
+		printf STDERR "# %s) returned %s\n", $me, $rv;
 		printf STDERR "# %s) $@", $me;
+		if ($@ =~ /database is locked/) {
+			if ($execcount < 100) {
+				print STDERR "# sleeping. Will try again\n";
+				sleep(rand(37));
+				goto execagain;
+			}
+			printf STDERR "# retried %d times, bailing\n", $execcount;
+		}
 		printf STDERR "# %s) query='%s'\n",$me, $_query;
 		my ($x,$y,$z);
 		for my $parm (@{$me->{bindparams}}) {
