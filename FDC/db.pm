@@ -163,6 +163,25 @@ connect
 	return 0;
 }
 
+sub
+do
+{
+	my ($me,@args) = @_;
+	return $me->{dbh}->do(@args);
+}
+sub
+begin_work
+{
+	my ($me,@args) = @_;
+	return $me->{dbh}->begin_work(@args);
+}
+sub
+commit
+{
+	my ($me,@args) = @_;
+	return $me->{dbh}->commit(@args);
+}
+
 sub getdbh {
 	my ($me) = @_;
 	if (!defined($me->{dbh})) {
