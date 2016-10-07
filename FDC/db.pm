@@ -12,13 +12,14 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-use strict;
-use warnings;
-
 package FDC::db;
 
 use strict;
 use warnings;
+
+use vars qw($VERSION);
+
+$VERSION = '6.0';
 
 use POSIX qw(strftime);
 use Term::ReadKey;
@@ -26,9 +27,6 @@ use Term::ReadKey;
 use DBI;
 
 use DBI::Const::GetInfoType qw(%GetInfoType);
-
-use strict;
-use warnings;
 
 sub new {
 	my ($class, $dsn, $user, $pass) = @_;
