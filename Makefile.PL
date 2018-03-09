@@ -1,7 +1,7 @@
 use ExtUtils::MakeMaker;
 
 WriteMakefile( NAME => "FDC",
-	VERSION_FROM => 'FDC/db.pm',
+	VERSION_FROM => 'lib/FDC/db.pm',
 	PREREQ_PM => {
 		'DBI' => 0,
 		'Term::ReadKey' => '0',
