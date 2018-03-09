@@ -504,6 +504,10 @@ sub fetchrow_array {
 	# XXX observed to fail
 	return $me->getsth->fetchrow_array;
 }
+sub fetchrow_hashref {
+	my ($me) = @_;
+	return $me->getsth->fetchrow_hashref;
+}
 sub fetch {
 	my ($me) = @_;
 
