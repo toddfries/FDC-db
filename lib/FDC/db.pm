@@ -596,8 +596,8 @@ sub execute {
 			}
 			if ($me->{db}->_debug) {
 				printf STDERR "# %s FDC::db::sth: ", $me;
+				printf STDERR "bind_params(%s,%s,%s)\n",$x,$y,$z;
 			}
-			printf STDERR "bind_params(%s,%s,%s)\n",$me,$x,$y,$z;
 		}
 		if ($me->{db}->_debug) {
 			printf STDERR "[$_query] failed, returned $rv\n";
