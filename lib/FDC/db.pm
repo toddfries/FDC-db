@@ -453,6 +453,12 @@ sub getsth {
 	return $me->{sth};
 }
 
+sub type_info_all {
+	my ($me, @args) = @_;
+	return $me->{db}->getdbh->type_info_all(@args);
+}
+
+
 sub getoid {
 	my ($me, $table) = @_;
 	if (!defined($me->{sth})) {
@@ -577,7 +583,11 @@ sub execute {
 		}
 	};
 	if ($@) {
-		printf STDERR "# %s) returned %s\n", $me, $rv;
+		my $rvstr = $rv;
+		if (!defined($rvstr)) {
+			$rvstr = "<undef>";
+		}
+		printf STDERR "# %s) returned %s\n", $me, $rvstr;
 		printf STDERR "# %s) $@", $me;
 		if ($@ =~ /database is locked/) {
 			if ($execcount < 100) {
@@ -600,7 +610,7 @@ sub execute {
 			}
 		}
 		if ($me->{db}->_debug) {
-			printf STDERR "[$_query] failed, returned $rv\n";
+			printf STDERR "[$_query] failed, returned $rvstr\n";
 			STDERR->flush;
 		}
 		print STDERR $me->{db}->issuestr($@, "$caller");
